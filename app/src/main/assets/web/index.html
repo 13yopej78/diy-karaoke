@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>DIY Karaoke</title>
+<style>
+  :root { --bg:#160a30; --card:#26154d; --acc:#ffd23c; --txt:#fff; --mut:#b9a9e0; --red:#e0405a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, Roboto, "Segoe UI", sans-serif; background: var(--bg); color: var(--txt); }
+  header { position: sticky; top: 0; z-index: 5; background: linear-gradient(90deg,#3a0f6e,#7a1660); padding: 10px 14px 0; }
+  h1 { margin: 0 0 8px; font-size: 20px; }
+  h1 span { color: var(--acc); }
+  #who { float: right; font-size: 13px; color: var(--mut); padding-top: 4px; }
+  #who b { color: var(--acc); }
+  nav { display: flex; }
+  nav button { flex: 1; background: none; border: 0; color: var(--mut); font-size: 15px; padding: 10px 0; border-bottom: 3px solid transparent; }
+  nav button.on { color: var(--txt); border-bottom-color: var(--acc); font-weight: 600; }
+  main { padding: 12px; }
+  .tab { display: none; } .tab.on { display: block; }
+  .now { background: var(--card); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  .now .t { font-size: 17px; font-weight: 600; }
+  .muted { color: var(--mut); font-size: 13px; }
+  .ctrl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+  .ctrl button, .btn { background: #3b2470; color: var(--txt); border: 0; border-radius: 10px; padding: 11px 6px; font-size: 15px; }
+  .btn.acc { background: var(--acc); color: #222; font-weight: 600; }
+  .btn.red { background: var(--red); }
+  .item { display: flex; align-items: center; gap: 10px; background: var(--card); border-radius: 10px; padding: 10px; margin-bottom: 8px; }
+  .item .info { flex: 1; min-width: 0; }
+  .item .t { font-size: 15px; overflow: hidden; text-overflow: ellipsis; }
+  .item img { width: 96px; height: 54px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+  .item button { background: #3b2470; color: var(--txt); border: 0; border-radius: 8px; padding: 8px 10px; font-size: 14px; flex-shrink: 0; }
+  .item button.add { background: var(--acc); color: #222; font-weight: 700; }
+  .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 6px; background: #4a2d88; color: var(--mut); margin-right: 4px; }
+  .search { display: flex; gap: 8px; margin-bottom: 12px; }
+  input[type=text], input[type=search] { flex: 1; width: 100%; padding: 11px; border-radius: 10px; border: 0; font-size: 16px; background: #fff; color: #111; }
+  label.chk { font-size: 13px; color: var(--mut); display: block; margin: -4px 0 10px; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #111d; color: #fff; padding: 10px 16px; border-radius: 10px; display: none; z-index: 10; max-width: 90%; text-align: center; }
+  .empty { text-align: center; color: var(--mut); padding: 24px 0; }
+  .set { background: var(--card); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  .set p { margin: 4px 0 10px; }
+</style>
+</head>
+<body>
+<header>
+  <div id="who">Singer: <b id="whoName">?</b> ✎</div>
+  <h1>🎤 DIY <span>Karaoke</span></h1>
+  <nav>
+    <button data-tab="queue" class="on">Queue</button>
+    <button data-tab="songs">My Songs</button>
+    <button data-tab="yt">YouTube</button>
+    <button data-tab="settings">⚙</button>
+  </nav>
+</header>
+<main>
+  <section id="queue" class="tab on">
+    <div class="now">
+      <div class="muted">Now playing</div>
+      <div class="t" id="nowTitle">—</div>
+      <div class="muted" id="nowSinger"></div>
+      <div class="ctrl">
+        <button onclick="api('pause')">⏯ Pause</button>
+        <button onclick="api('restart')">⏮ Restart</button>
+        <button onclick="confirmSkip()">⏭ Skip</button>
+        <button onclick="api('key',{delta:-1})">♭ Key −</button>
+        <div class="muted" style="text-align:center;padding-top:10px" id="keyLbl">Key 0</div>
+        <button onclick="api('key',{delta:1})">♯ Key +</button>
+      </div>
+    </div>
+    <div id="queueList"></div>
+  </section>
+
+  <section id="songs" class="tab">
+    <div class="search"><input type="search" id="libQ" placeholder="Search your songs…" enterkeyhint="search"></div>
+    <div class="muted" id="libInfo" style="margin-bottom:8px"></div>
+    <div id="libList"></div>
+  </section>
+
+  <section id="yt" class="tab">
+    <div class="search">
+      <input type="search" id="ytQ" placeholder="Song or artist (or paste a YouTube link)" enterkeyhint="search">
+      <button class="btn acc" onclick="ytSearch()">Search</button>
+    </div>
+    <label class="chk"><input type="checkbox" id="ytKar" checked> add "karaoke" to the search</label>
+    <div id="ytList"></div>
+  </section>
+
+  <section id="settings" class="tab">
+    <div class="set">
+      <b>Your singer name</b>
+      <p class="muted">Shown on the TV when it's your turn.</p>
+      <div class="search"><input type="text" id="nameIn" placeholder="Your name"><button class="btn acc" onclick="saveName()">Save</button></div>
+    </div>
+    <div class="set">
+      <b>Song library</b>
+      <p class="muted" id="libStatus"></p>
+      <button class="btn" onclick="api('rescan').then(()=>toast('Rescanning drives…'))">🔄 Rescan USB drives</button>
+    </div>
+    <div class="set">
+      <b>YouTube API key (optional)</b>
+      <p class="muted">YouTube search works without a key. If it stops working, paste a free YouTube Data API key here. <span id="keyState"></span></p>
+      <div class="search"><input type="text" id="ytKeyIn" placeholder="AIza…"><button class="btn" onclick="saveKey()">Save</button></div>
+    </div>
+    <div class="set">
+      <b>Queue</b>
+      <p class="muted">Remove every song waiting in the queue.</p>
+      <button class="btn red" onclick="if(confirm('Clear the whole queue?')) api('clear')">Clear queue</button>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let singer = localStorage.getItem('singer') || '';
+
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+    clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 2500);
+  }
+
+  async function api(path, body) {
+    const opt = body === undefined ? { method: 'POST', body: '{}' } : { method: 'POST', body: JSON.stringify(body) };
+    const r = await fetch('/api/' + path, opt);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.ok === false) { toast(j.error || 'Something went wrong'); }
+    refresh();
+    return j;
+  }
+
+  async function getJson(url) {
+    const r = await fetch(url);
+    return r.json();
+  }
+
+  function askName() {
+    const n = prompt('What is your singer name?', singer);
+    if (n !== null && n.trim()) { singer = n.trim(); localStorage.setItem('singer', singer); }
+    showName();
+  }
+  function showName() { $('whoName').textContent = singer || '?'; $('nameIn').value = singer; }
+  function saveName() {
+    singer = $('nameIn').value.trim(); localStorage.setItem('singer', singer); showName(); toast('Saved');
+  }
+  $('who').onclick = askName;
+
+  document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+    document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.id === b.dataset.tab));
+    if (b.dataset.tab === 'songs' && !$('libList').innerHTML) libSearch();
+    if (b.dataset.tab === 'settings') loadSettings();
+  });
+
+  async function add(item) {
+    if (!singer) askName();
+    const r = await api('add', Object.assign({ singer }, item));
+    if (r.ok) toast('Added! Position ' + r.position + ' in the queue');
+  }
+
+  function confirmSkip() { if (confirm('Skip the current song?')) api('skip'); }
+
+  // ---------- queue
+  async function refresh() {
+    try {
+      const s = await getJson('/api/state');
+      $('nowTitle').textContent = s.now ? s.now.title : (s.player.mode === 'IDLE' ? 'Nothing playing' : '—');
+      $('nowSinger').textContent = s.now ? ((s.now.singer ? '🎤 ' + s.now.singer + ' · ' : '') + s.now.type + (s.player.paused ? ' · paused' : '')) : '';
+      $('keyLbl').textContent = 'Key ' + (s.player.key > 0 ? '+' : '') + s.player.key;
+      $('libStatus').textContent = s.scanning ? 'Scanning…' : s.libraryInfo;
+      $('libInfo').textContent = s.library + ' songs in library';
+      const q = s.queue;
+      $('queueList').innerHTML = q.length ? q.map((e, i) => `
+        <div class="item">
+          <div class="info"><div class="t">${i + 1}. ${esc(e.title)}</div>
+            <div class="muted"><span class="tag">${esc(e.type)}</span>${e.singer ? '🎤 ' + esc(e.singer) : ''}</div></div>
+          <button onclick="api('move',{key:${e.key},dir:-1})">▲</button>
+          <button onclick="api('move',{key:${e.key},dir:1})">▼</button>
+          <button onclick="api('remove',{key:${e.key}})">✕</button>
+        </div>`).join('') : '<div class="empty">Queue is empty.<br>Add songs from <b>My Songs</b> or <b>YouTube</b>.</div>';
+    } catch (e) { /* TV app may be restarting */ }
+  }
+
+  // ---------- local library
+  let libTimer;
+  $('libQ').addEventListener('input', () => { clearTimeout(libTimer); libTimer = setTimeout(libSearch, 300); });
+  async function libSearch() {
+    const j = await getJson('/api/library?q=' + encodeURIComponent($('libQ').value));
+    window._lib = j.results;
+    $('libList').innerHTML = j.results.length ? j.results.map((s, i) => `
+      <div class="item">
+        <div class="info"><div class="t">${esc(s.title)}</div><div class="muted"><span class="tag">${esc(s.type)}</span></div></div>
+        <button class="add" onclick="add({type:'local',id:window._lib[${i}].id})">＋ Add</button>
+      </div>`).join('') : '<div class="empty">No songs found.<br>Is the USB drive plugged into the Shield? Try ⚙ → Rescan.</div>';
+  }
+
+  // ---------- YouTube
+  $('ytQ').addEventListener('keydown', e => { if (e.key === 'Enter') ytSearch(); });
+  async function ytSearch() {
+    const q = $('ytQ').value.trim();
+    if (!q) return;
+    $('ytList').innerHTML = '<div class="empty">Searching…</div>';
+    const j = await getJson('/api/youtube?karaoke=' + ($('ytKar').checked ? 1 : 0) + '&q=' + encodeURIComponent(q));
+    window._yt = j.results;
+    if (j.error) { $('ytList').innerHTML = '<div class="empty">' + esc(j.error) + '</div>'; return; }
+    $('ytList').innerHTML = j.results.length ? j.results.map((v, i) => `
+      <div class="item">
+        <img src="${esc(v.thumb)}" loading="lazy">
+        <div class="info"><div class="t">${esc(v.title)}</div><div class="muted">${esc(v.channel)} ${esc(v.duration)}</div></div>
+        <button class="add" onclick="add({type:'youtube',videoId:window._yt[${i}].videoId,title:window._yt[${i}].title})">＋</button>
+      </div>`).join('') : '<div class="empty">No results.</div>';
+  }
+
+  // ---------- settings
+  async function loadSettings() {
+    const j = await getJson('/api/settings');
+    $('keyState').textContent = j.hasKey ? '(A key is saved.)' : '';
+  }
+  async function saveKey() {
+    await api('settings', { ytKey: $('ytKeyIn').value });
+    $('ytKeyIn').value = ''; loadSettings(); toast('Saved');
+  }
+
+  showName();
+  if (!singer) setTimeout(askName, 300);
+  refresh();
+  setInterval(refresh, 2500);
+</script>
+</body>
+</html>
